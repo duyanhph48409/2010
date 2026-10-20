@@ -23,11 +23,25 @@ Chúc các chị em một ngày 20/10 thật ý nghĩa và ngập tràn niềm v
 export const PLACEHOLDER_PHOTO =
   'https://images.pexels.com/photos/54288/pexels-photo-54288.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&fit=crop';
 
+// UTF-8 safe base64 encode/decode — btoa/atob alone can't handle Vietnamese diacritics
+function utf8ToBase64(str) {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  bytes.forEach((b) => { binary += String.fromCharCode(b); });
+  return btoa(binary);
+}
+
+function base64ToUtf8(b64) {
+  const binary = atob(b64);
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
 export function getConfig() {
   const hash = window.location.hash.replace(/^#/, '');
   if (hash) {
     try {
-      const decoded = atob(decodeURIComponent(hash));
+      const decoded = base64ToUtf8(decodeURIComponent(hash));
       const parsed = JSON.parse(decoded);
       return { ...DEFAULT_CONFIG, ...parsed };
     } catch {
@@ -39,7 +53,7 @@ export function getConfig() {
 
 export function encodeConfigToHash(config) {
   const json = JSON.stringify(config);
-  return '#' + encodeURIComponent(btoa(json));
+  return '#' + encodeURIComponent(utf8ToBase64(json));
 }
 
 export function isEditMode() {
