@@ -1,43 +1,82 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { encodeConfigToHash } from './config.js';
+import { uploadFile } from './supabaseClient.js';
 
 export default function EditMode({ config, onSave, onPreview }) {
   const [form, setForm] = useState({ ...config });
   const [toast, setToast] = useState('');
+  const [toastType, setToastType] = useState('success');
   const [sharedUrl, setSharedUrl] = useState('');
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [musicUploading, setMusicUploading] = useState(false);
+  const photoInputRef = useRef(null);
+  const musicInputRef = useRef(null);
 
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
+  const showToast = (msg, type = 'success') => {
+    setToast(msg);
+    setToastType(type);
+    setTimeout(() => setToast(''), 2500);
+  };
+
   const handleSave = () => {
     onSave(form);
-    setToast('Đã lưu!');
-    setTimeout(() => setToast(''), 2000);
+    showToast('Đã lưu!');
   };
 
   const handleShare = () => {
     const hash = encodeConfigToHash(form);
     const url = window.location.origin + window.location.pathname + hash;
     setSharedUrl(url);
+    showToast('Đã tạo link!');
   };
 
   const handleCopy = async () => {
     const url = sharedUrl || window.location.origin + window.location.pathname + encodeConfigToHash(form);
     try {
       await navigator.clipboard.writeText(url);
-      setToast('Đã sao chép!');
-      setTimeout(() => setToast(''), 2000);
+      showToast('Đã sao chép!');
     } catch {
-      // Fallback
       const ta = document.createElement('textarea');
       ta.value = url;
       document.body.appendChild(ta);
       ta.select();
       document.execCommand('copy');
       document.body.removeChild(ta);
-      setToast('Đã sao chép!');
-      setTimeout(() => setToast(''), 2000);
+      showToast('Đã sao chép!');
     }
+  };
+
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoUploading(true);
+    try {
+      const url = await uploadFile(file, 'photos');
+      update('photoUrl', url);
+      showToast('Đã tải ảnh lên!');
+    } catch (err) {
+      showToast('Lỗi tải ảnh lên', 'error');
+    }
+    setPhotoUploading(false);
+    if (photoInputRef.current) photoInputRef.current.value = '';
+  };
+
+  const handleMusicUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMusicUploading(true);
+    try {
+      const url = await uploadFile(file, 'music');
+      update('backgroundMusicUrl', url);
+      showToast('Đã tải nhạc lên!');
+    } catch (err) {
+      showToast('Lỗi tải nhạc lên', 'error');
+    }
+    setMusicUploading(false);
+    if (musicInputRef.current) musicInputRef.current.value = '';
   };
 
   const inputStyle = {
@@ -58,6 +97,23 @@ export default function EditMode({ config, onSave, onPreview }) {
     color: '#c9707c',
     marginBottom: 4,
     fontWeight: 600,
+  };
+
+  const uploadBtnStyle = {
+    padding: '8px 14px',
+    borderRadius: 20,
+    border: '1px solid #f4b8c2',
+    background: '#fff',
+    color: '#c9707c',
+    fontSize: 13,
+    fontFamily: '"Itim", cursive',
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
   };
 
   return (
@@ -135,24 +191,83 @@ export default function EditMode({ config, onSave, onPreview }) {
             />
           </div>
 
+          {/* Photo upload */}
           <div>
-            <label style={labelStyle}>URL hình ảnh (để trống = ảnh mặc định)</label>
-            <input
-              style={inputStyle}
-              value={form.photoUrl}
-              onChange={(e) => update('photoUrl', e.target.value)}
-              placeholder="https://..."
-            />
+            <label style={labelStyle}>Hình ảnh</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <input
+                style={{ ...inputStyle, flex: 1 }}
+                value={form.photoUrl}
+                onChange={(e) => update('photoUrl', e.target.value)}
+                placeholder="Dán URL hoặc tải ảnh lên"
+              />
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                disabled={photoUploading}
+                style={uploadBtnStyle}
+              >
+                {photoUploading ? '⏳' : '📁 Tải ảnh'}
+              </button>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoUpload}
+                style={{ display: 'none' }}
+              />
+            </div>
+            {form.photoUrl && (
+              <div style={{ marginTop: 8 }}>
+                <img
+                  src={form.photoUrl}
+                  alt="Xem trước"
+                  style={{
+                    width: 80,
+                    height: 80,
+                    objectFit: 'cover',
+                    borderRadius: 8,
+                    border: '1px solid #f4b8c2',
+                  }}
+                />
+              </div>
+            )}
+            {!form.photoUrl && (
+              <div style={{ fontSize: 12, color: '#c9707c', opacity: 0.6, marginTop: 4 }}>
+                Để trống = dùng ảnh mặc định
+              </div>
+            )}
           </div>
 
+          {/* Music upload */}
           <div>
-            <label style={labelStyle}>URL nhạc nền (tùy chọn)</label>
-            <input
-              style={inputStyle}
-              value={form.backgroundMusicUrl}
-              onChange={(e) => update('backgroundMusicUrl', e.target.value)}
-              placeholder="https://..."
-            />
+            <label style={labelStyle}>Nhạc nền (tùy chọn)</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <input
+                style={{ ...inputStyle, flex: 1 }}
+                value={form.backgroundMusicUrl}
+                onChange={(e) => update('backgroundMusicUrl', e.target.value)}
+                placeholder="Dán URL hoặc tải nhạc lên"
+              />
+              <button
+                onClick={() => musicInputRef.current?.click()}
+                disabled={musicUploading}
+                style={uploadBtnStyle}
+              >
+                {musicUploading ? '⏳' : '🎵 Tải nhạc'}
+              </button>
+              <input
+                ref={musicInputRef}
+                type="file"
+                accept="audio/*"
+                onChange={handleMusicUpload}
+                style={{ display: 'none' }}
+              />
+            </div>
+            {form.backgroundMusicUrl && (
+              <div style={{ marginTop: 8 }}>
+                <audio src={form.backgroundMusicUrl} controls style={{ width: '100%', height: 32 }} />
+              </div>
+            )}
           </div>
 
           {/* Action buttons */}
@@ -213,12 +328,11 @@ export default function EditMode({ config, onSave, onPreview }) {
               position: 'fixed',
               bottom: 40,
               left: '50%',
-              marginLeft: -80,
-              width: 160,
+              transform: 'translateX(-50%)',
               textAlign: 'center',
-              background: '#e8576f',
+              background: toastType === 'error' ? '#d64550' : '#e8576f',
               color: '#fff',
-              padding: '10px 16px',
+              padding: '10px 20px',
               borderRadius: 24,
               fontSize: 14,
               fontFamily: '"Itim", cursive',
