@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Carnation,
@@ -47,9 +47,17 @@ export default function GreetingCard({ config, replayKey }) {
   const userScrolled = useRef(false);
   const [revealCount, setRevealCount] = useState(0);
   const [revealDone, setRevealDone] = useState(false);
-  const segmentsRef = useRef([]);
-  const totalCharsRef = useRef(0);
   const photoUrl = config.photoUrl || PLACEHOLDER_PHOTO;
+
+  // Build segments synchronously from letter text (stable via useMemo)
+  const segments = useMemo(
+    () => buildSegments(config.letterText),
+    [config.letterText],
+  );
+  const totalChars = useMemo(
+    () => segments.reduce((sum, s) => sum + s.chars.length, 0),
+    [segments],
+  );
 
   // Phase timeline (ms): 0 closed, 1 flap open, 2 card slides up, 3 carnations spring, 4 letter expands
   useEffect(() => {
@@ -67,17 +75,9 @@ export default function GreetingCard({ config, replayKey }) {
     return () => timers.forEach(clearTimeout);
   }, [replayKey]);
 
-  // Build segments when letter text is available
-  useEffect(() => {
-    const segs = buildSegments(config.letterText);
-    segmentsRef.current = segs;
-    totalCharsRef.current = segs.reduce((sum, s) => sum + s.chars.length, 0);
-  }, [config.letterText]);
-
   // Typewriter reveal + follow-scroll
   useEffect(() => {
     if (phase < 4) return;
-    const totalChars = totalCharsRef.current;
     if (totalChars === 0) {
       setRevealDone(true);
       return;
@@ -94,19 +94,9 @@ export default function GreetingCard({ config, replayKey }) {
           return;
         }
 
-        // Find which segment we're in and advance one character
-        const segs = segmentsRef.current;
-        let advanced = false;
-        for (let i = 0; i < segs.length; i++) {
-          const seg = segs[i];
-          if (count < seg.start + seg.chars.length) {
-            count++;
-            advanced = true;
-            break;
-          }
-        }
-
-        if (!advanced || count >= totalChars) {
+        // Advance one character
+        count++;
+        if (count >= totalChars) {
           count = totalChars;
           setRevealCount(count);
           clearInterval(intervalId);
@@ -132,7 +122,7 @@ export default function GreetingCard({ config, replayKey }) {
       clearTimeout(startTimer);
       if (intervalId) clearInterval(intervalId);
     };
-  }, [phase, replayKey]);
+  }, [phase, replayKey, totalChars]);
 
   const handleUserScroll = useCallback(() => {
     if (phase >= 4 && !revealDone) {
@@ -144,8 +134,6 @@ export default function GreetingCard({ config, replayKey }) {
     // Let parent handle replay by changing replayKey
     if (config.onReplay) config.onReplay();
   }, [config]);
-
-  const segments = segmentsRef.current;
 
   return (
     <div
@@ -391,7 +379,7 @@ export default function GreetingCard({ config, replayKey }) {
                         </p>
                       );
                     })}
-                    {revealCount >= totalCharsRef.current && (
+                    {revealCount >= totalChars && totalChars > 0 && (
                       <div style={{ textAlign: 'right', marginTop: 8, fontStyle: 'italic', color: '#c9707c' }}>
                         — {config.senderName}
                       </div>
