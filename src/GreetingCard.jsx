@@ -47,7 +47,7 @@ export default function GreetingCard({ config, replayKey }) {
       if (userScrolled.current) return;
       const el2 = scrollRef.current;
       if (!el2) return;
-      const duration = 13000;
+      const duration = 22000;
       const startTime = performance.now();
       const startScroll = 0;
       const endScroll = el2.scrollHeight - el2.clientHeight;
@@ -65,7 +65,7 @@ export default function GreetingCard({ config, replayKey }) {
         }
       };
       autoScrollTimer.current = requestAnimationFrame(step);
-    }, 1400);
+    }, 1800);
 
     return () => {
       clearTimeout(startTimer);
@@ -295,14 +295,15 @@ export default function GreetingCard({ config, replayKey }) {
                       fontFamily: '"Itim", cursive',
                       color: '#2d2a4a',
                       fontSize: 15,
-                      lineHeight: 1.7,
+                      lineHeight: 1.8,
                       padding: '0 4px',
+                      scrollSnapType: 'y proximity',
                     }}
                   >
                     {letterParagraphs.map((para, i) => (
                       <motion.p
                         key={i}
-                        style={{ margin: '0 0 10px' }}
+                        style={{ margin: '0 0 14px', scrollSnapAlign: 'start' }}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ duration: 0.8, delay: 0.6 + i * 0.25 }}
@@ -310,7 +311,7 @@ export default function GreetingCard({ config, replayKey }) {
                         {para}
                       </motion.p>
                     ))}
-                    <div style={{ textAlign: 'right', marginTop: 8, fontStyle: 'italic', color: '#c9707c' }}>
+                    <div style={{ textAlign: 'right', marginTop: 8, fontStyle: 'italic', color: '#c9707c', scrollSnapAlign: 'start' }}>
                       — {config.senderName}
                     </div>
                   </div>
