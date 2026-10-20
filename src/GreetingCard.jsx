@@ -29,10 +29,10 @@ export default function GreetingCard({ config, replayKey }) {
     userScrolled.current = false;
 
     const timers = [
-      setTimeout(() => setPhase(1), 2000),
-      setTimeout(() => setPhase(2), 4000),
-      setTimeout(() => setPhase(3), 5600),
-      setTimeout(() => setPhase(4), 7400),
+      setTimeout(() => setPhase(1), 1500),
+      setTimeout(() => setPhase(2), 3200),
+      setTimeout(() => setPhase(3), 4600),
+      setTimeout(() => setPhase(4), 6200),
     ];
     return () => timers.forEach(clearTimeout);
   }, [replayKey]);
@@ -65,7 +65,7 @@ export default function GreetingCard({ config, replayKey }) {
         }
       };
       autoScrollTimer.current = requestAnimationFrame(step);
-    }, 1800);
+    }, 1400);
 
     return () => {
       clearTimeout(startTimer);
@@ -148,7 +148,7 @@ export default function GreetingCard({ config, replayKey }) {
                   }}
                   initial={{ y: 0, opacity: 0 }}
                   animate={{ y: phase >= 3 ? -60 : -30, opacity: 1 }}
-                  transition={{ duration: 1.8, ease }}
+                  transition={{ duration: 1.4, ease }}
                 >
                   <div
                     style={{ fontFamily: '"Dancing Script", cursive', color: '#c9707c', fontSize: 22, lineHeight: 1.2 }}
@@ -209,7 +209,7 @@ export default function GreetingCard({ config, replayKey }) {
                   }}
                   initial={{ rotateX: 0 }}
                   animate={{ rotateX: phase >= 1 ? -180 : 0 }}
-                  transition={{ duration: 1.6, ease }}
+                  transition={{ duration: 1.2, ease }}
                 >
                   <EnvelopeFlap width={300} />
                 </motion.div>
@@ -255,7 +255,7 @@ export default function GreetingCard({ config, replayKey }) {
                   }}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  transition={{ duration: 1.0, delay: 0.5 }}
+                  transition={{ duration: 1.2, delay: 0.4 }}
                 >
                   {/* Corner sparkles */}
                   <Sparkle size={14} style={{ position: 'absolute', top: 6, left: 6, opacity: 0.6 }} />
@@ -305,7 +305,7 @@ export default function GreetingCard({ config, replayKey }) {
                         style={{ margin: '0 0 10px' }}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        transition={{ duration: 0.7, delay: 0.5 + i * 0.2 }}
+                        transition={{ duration: 0.8, delay: 0.6 + i * 0.25 }}
                       >
                         {para}
                       </motion.p>
