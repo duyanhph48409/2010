@@ -14,18 +14,48 @@ import { PLACEHOLDER_PHOTO } from './config.js';
 
 const ease = [0.45, 0, 0.55, 1];
 
+// Speed for typewriter reveal: ms per character
+const CHAR_MS = 55;
+const PARAGRAPH_PAUSE = 600;
+
+// Split text into paragraphs, each with its characters
+function buildSegments(text) {
+  const paragraphs = (text || '').split('\n').filter((l) => l.trim());
+  let globalIndex = 0;
+  return paragraphs.map((para) => {
+    const chars = Array.from(para); // Array.from handles surrogate pairs / combining marks better
+    const segment = { text: para, chars, start: globalIndex };
+    globalIndex += chars.length;
+    return segment;
+  });
+}
+
+// Total reveal time across all segments (chars + pauses between paragraphs)
+function totalRevealMs(segments) {
+  if (!segments.length) return 0;
+  let total = 0;
+  for (const seg of segments) {
+    total += seg.chars.length * CHAR_MS;
+  }
+  total += Math.max(0, segments.length - 1) * PARAGRAPH_PAUSE;
+  return total;
+}
+
 export default function GreetingCard({ config, replayKey }) {
   const [phase, setPhase] = useState(0);
   const scrollRef = useRef(null);
-  const autoScrollTimer = useRef(null);
   const userScrolled = useRef(false);
-  const [autoScrollDone, setAutoScrollDone] = useState(false);
+  const [revealCount, setRevealCount] = useState(0);
+  const [revealDone, setRevealDone] = useState(false);
+  const segmentsRef = useRef([]);
+  const totalCharsRef = useRef(0);
   const photoUrl = config.photoUrl || PLACEHOLDER_PHOTO;
 
   // Phase timeline (ms): 0 closed, 1 flap open, 2 card slides up, 3 carnations spring, 4 letter expands
   useEffect(() => {
     setPhase(0);
-    setAutoScrollDone(false);
+    setRevealCount(0);
+    setRevealDone(false);
     userScrolled.current = false;
 
     const timers = [
@@ -37,55 +67,115 @@ export default function GreetingCard({ config, replayKey }) {
     return () => timers.forEach(clearTimeout);
   }, [replayKey]);
 
-  // Auto-scroll
+  // Build segments when letter text is available
+  useEffect(() => {
+    const segs = buildSegments(config.letterText);
+    segmentsRef.current = segs;
+    totalCharsRef.current = segs.reduce((sum, s) => sum + s.chars.length, 0);
+  }, [config.letterText]);
+
+  // Typewriter reveal + follow-scroll
   useEffect(() => {
     if (phase < 4) return;
-    const el = scrollRef.current;
-    if (!el) return;
+    const totalChars = totalCharsRef.current;
+    if (totalChars === 0) {
+      setRevealDone(true);
+      return;
+    }
 
-    const startTimer = setTimeout(() => {
-      if (userScrolled.current) return;
-      const el2 = scrollRef.current;
-      if (!el2) return;
-      const duration = 22000;
-      const startTime = performance.now();
-      const startScroll = 0;
-      const endScroll = el2.scrollHeight - el2.clientHeight;
+    // Wait a moment for the letter container to appear, then start revealing
+    const startDelay = 1600;
+    const startTime = performance.now() + startDelay;
+    let rafId = null;
 
-      const step = (now) => {
-        if (userScrolled.current) return;
-        const elapsed = now - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        const eased = 0.5 - 0.5 * Math.cos(Math.PI * progress);
-        el2.scrollTop = startScroll + (endScroll - startScroll) * eased;
-        if (progress < 1) {
-          autoScrollTimer.current = requestAnimationFrame(step);
+    const step = (now) => {
+      if (userScrolled.current) {
+        // User took over — stop auto reveal/scroll but keep what's revealed
+        setRevealDone(true);
+        return;
+      }
+      const elapsed = now - startTime;
+      if (elapsed < 0) {
+        rafId = requestAnimationFrame(step);
+        return;
+      }
+
+      // Calculate how many characters to reveal based on elapsed time + paragraph pauses
+      let count = 0;
+      let timeUsed = 0;
+      for (let i = 0; i < segmentsRef.current.length; i++) {
+        const seg = segmentsRef.current[i];
+        const segCharTime = seg.chars.length * CHAR_MS;
+        if (timeUsed + segCharTime <= elapsed) {
+          count = seg.start + seg.chars.length;
+          timeUsed += segCharTime;
+          if (i < segmentsRef.current.length - 1) {
+            if (timeUsed + PARAGRAPH_PAUSE <= elapsed) {
+              timeUsed += PARAGRAPH_PAUSE;
+            } else {
+              // We're in the pause between this paragraph and the next
+              break;
+            }
+          }
         } else {
-          setAutoScrollDone(true);
+          const charsIntoSeg = Math.floor((elapsed - timeUsed) / CHAR_MS);
+          count = seg.start + Math.min(charsIntoSeg, seg.chars.length);
+          break;
         }
-      };
-      autoScrollTimer.current = requestAnimationFrame(step);
-    }, 1800);
+      }
+
+      setRevealCount(count);
+
+      // Follow-scroll: keep the bottom of revealed text in view
+      const el = scrollRef.current;
+      if (el) {
+        const maxScroll = el.scrollHeight - el.clientHeight;
+        // Find the paragraph element that contains the current reveal position
+        const paras = el.querySelectorAll('[data-para]');
+        for (let p = paras.length - 1; p >= 0; p--) {
+          const paraEl = paras[p];
+          const paraStart = Number(paraEl.dataset.paraStart);
+          const paraLen = Number(paraEl.dataset.paraLen);
+          if (count >= paraStart) {
+            // Scroll so this paragraph's revealed portion is visible
+            const charsShown = Math.min(count - paraStart, paraLen);
+            const fullHeight = paraEl.scrollHeight;
+            const ratio = paraLen > 0 ? charsShown / paraLen : 1;
+            const visibleHeight = fullHeight * ratio;
+            const targetTop = paraEl.offsetTop + visibleHeight - el.clientHeight * 0.65;
+            const targetScroll = Math.max(0, Math.min(maxScroll, targetTop));
+            el.scrollTop = targetScroll;
+            break;
+          }
+        }
+      }
+
+      if (count >= totalChars) {
+        setRevealDone(true);
+        return;
+      }
+      rafId = requestAnimationFrame(step);
+    };
+
+    rafId = requestAnimationFrame(step);
 
     return () => {
-      clearTimeout(startTimer);
-      if (autoScrollTimer.current) cancelAnimationFrame(autoScrollTimer.current);
+      if (rafId) cancelAnimationFrame(rafId);
     };
   }, [phase, replayKey]);
 
   const handleUserScroll = useCallback(() => {
-    if (phase >= 4 && !autoScrollDone) {
+    if (phase >= 4 && !revealDone) {
       userScrolled.current = true;
-      if (autoScrollTimer.current) cancelAnimationFrame(autoScrollTimer.current);
     }
-  }, [phase, autoScrollDone]);
+  }, [phase, revealDone]);
 
   const handleReplay = useCallback(() => {
     // Let parent handle replay by changing replayKey
     if (config.onReplay) config.onReplay();
   }, [config]);
 
-  const letterParagraphs = (config.letterText || '').split('\n').filter((l) => l.trim());
+  const segments = segmentsRef.current;
 
   return (
     <div
@@ -297,23 +387,47 @@ export default function GreetingCard({ config, replayKey }) {
                       fontSize: 15,
                       lineHeight: 1.8,
                       padding: '0 4px',
-                      scrollSnapType: 'y proximity',
+                      scrollBehavior: 'smooth',
                     }}
                   >
-                    {letterParagraphs.map((para, i) => (
-                      <motion.p
-                        key={i}
-                        style={{ margin: '0 0 14px', scrollSnapAlign: 'start' }}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.8, delay: 0.6 + i * 0.25 }}
-                      >
-                        {para}
-                      </motion.p>
-                    ))}
-                    <div style={{ textAlign: 'right', marginTop: 8, fontStyle: 'italic', color: '#c9707c', scrollSnapAlign: 'start' }}>
-                      — {config.senderName}
-                    </div>
+                    {segments.map((seg, i) => {
+                      const revealedInSeg = Math.max(0, Math.min(revealCount - seg.start, seg.chars.length));
+                      const visibleText = seg.chars.slice(0, revealedInSeg).join('');
+                      const allRevealed = revealedInSeg >= seg.chars.length;
+                      return (
+                        <p
+                          key={i}
+                          data-para={i}
+                          data-para-start={seg.start}
+                          data-para-len={seg.chars.length}
+                          style={{
+                            margin: '0 0 14px',
+                            opacity: revealedInSeg > 0 ? 1 : 0,
+                            transition: 'opacity 0.3s',
+                          }}
+                        >
+                          {visibleText}
+                          {!allRevealed && (
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                width: 2,
+                                height: '1em',
+                                marginLeft: 1,
+                                background: '#c9707c',
+                                verticalAlign: 'text-bottom',
+                                animation: 'caret-blink 0.8s steps(2) infinite',
+                              }}
+                            />
+                          )}
+                        </p>
+                      );
+                    })}
+                    {revealCount >= totalCharsRef.current && (
+                      <div style={{ textAlign: 'right', marginTop: 8, fontStyle: 'italic', color: '#c9707c' }}>
+                        — {config.senderName}
+                      </div>
+                    )}
                   </div>
 
                   {/* Butterfly corner */}
