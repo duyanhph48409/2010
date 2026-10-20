@@ -14,56 +14,32 @@ import { PLACEHOLDER_PHOTO } from './config.js';
 
 const ease = [0.45, 0, 0.55, 1];
 
-// Speed for typewriter reveal: ms per character
-const CHAR_MS = 55;
-const PARAGRAPH_PAUSE = 450;
+// Time between each sentence/paragraph appearing
+const SENTENCE_DELAY = 700;
 
-// Split text into paragraphs, each with its characters
-function buildSegments(text) {
-  const paragraphs = (text || '').split('\n').filter((l) => l.trim());
-  let globalIndex = 0;
-  return paragraphs.map((para) => {
-    const chars = Array.from(para); // Array.from handles surrogate pairs / combining marks better
-    const segment = { text: para, chars, start: globalIndex };
-    globalIndex += chars.length;
-    return segment;
-  });
-}
-
-// Total reveal time across all segments (chars + pauses between paragraphs)
-function totalRevealMs(segments) {
-  if (!segments.length) return 0;
-  let total = 0;
-  for (const seg of segments) {
-    total += seg.chars.length * CHAR_MS;
-  }
-  total += Math.max(0, segments.length - 1) * PARAGRAPH_PAUSE;
-  return total;
+// Split letter text into paragraphs (sentences/lines)
+function buildParagraphs(text) {
+  return (text || '').split('\n').map((l) => l.trim()).filter(Boolean);
 }
 
 export default function GreetingCard({ config, replayKey }) {
   const [phase, setPhase] = useState(0);
   const scrollRef = useRef(null);
   const userScrolled = useRef(false);
-  const [revealCount, setRevealCount] = useState(0);
-  const [revealDone, setRevealDone] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(0);
   const photoUrl = config.photoUrl || PLACEHOLDER_PHOTO;
 
-  // Build segments synchronously from letter text (stable via useMemo)
-  const segments = useMemo(
-    () => buildSegments(config.letterText),
+  // Build paragraphs synchronously
+  const paragraphs = useMemo(
+    () => buildParagraphs(config.letterText),
     [config.letterText],
   );
-  const totalChars = useMemo(
-    () => segments.reduce((sum, s) => sum + s.chars.length, 0),
-    [segments],
-  );
+  const totalParagraphs = paragraphs.length;
 
   // Phase timeline (ms): 0 closed, 1 flap open, 2 card slides up, 3 carnations spring, 4 letter expands
   useEffect(() => {
     setPhase(0);
-    setRevealCount(0);
-    setRevealDone(false);
+    setVisibleCount(0);
     userScrolled.current = false;
 
     const timers = [
@@ -75,60 +51,51 @@ export default function GreetingCard({ config, replayKey }) {
     return () => timers.forEach(clearTimeout);
   }, [replayKey]);
 
-  // Typewriter reveal + follow-scroll
+  // Reveal paragraphs one by one with CSS animation + auto-scroll follow
   useEffect(() => {
     if (phase < 4) return;
-    if (totalChars === 0) {
-      setRevealDone(true);
-      return;
+    if (totalParagraphs === 0) return;
+
+    // Start revealing after letter container appears
+    const startTimer = setTimeout(() => {
+      setVisibleCount(1);
+    }, 1200);
+
+    // Schedule each subsequent paragraph
+    const timers = [];
+    for (let i = 2; i <= totalParagraphs; i++) {
+      timers.push(
+        setTimeout(() => {
+          if (!userScrolled.current) setVisibleCount(i);
+        }, 1200 + (i - 1) * SENTENCE_DELAY),
+      );
     }
-
-    let count = 0;
-    let intervalId = null;
-
-    const startReveal = () => {
-      intervalId = setInterval(() => {
-        if (userScrolled.current) {
-          clearInterval(intervalId);
-          setRevealDone(true);
-          return;
-        }
-
-        // Advance one character
-        count++;
-        if (count >= totalChars) {
-          count = totalChars;
-          setRevealCount(count);
-          clearInterval(intervalId);
-          setRevealDone(true);
-          return;
-        }
-
-        setRevealCount(count);
-
-        // Follow-scroll: keep bottom of revealed text in view
-        const el = scrollRef.current;
-        if (el) {
-          const maxScroll = el.scrollHeight - el.clientHeight;
-          el.scrollTop = Math.min(maxScroll, el.scrollHeight);
-        }
-      }, CHAR_MS);
-    };
-
-    // Wait for letter container to appear, then start
-    const startTimer = setTimeout(startReveal, 1600);
 
     return () => {
       clearTimeout(startTimer);
-      if (intervalId) clearInterval(intervalId);
+      timers.forEach(clearTimeout);
     };
-  }, [phase, replayKey, totalChars]);
+  }, [phase, replayKey, totalParagraphs]);
+
+  // Auto-scroll to follow revealed paragraphs
+  useEffect(() => {
+    if (phase < 4 || visibleCount === 0 || userScrolled.current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    // Scroll to show the latest revealed paragraph
+    const target = el.children[visibleCount - 1];
+    if (target) {
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      const targetScroll = Math.min(maxScroll, target.offsetTop + target.offsetHeight - el.clientHeight + 20);
+      el.scrollTop = Math.max(0, targetScroll);
+    }
+  }, [phase, visibleCount]);
 
   const handleUserScroll = useCallback(() => {
-    if (phase >= 4 && !revealDone) {
+    if (phase >= 4 && visibleCount < totalParagraphs) {
       userScrolled.current = true;
     }
-  }, [phase, revealDone]);
+  }, [phase, visibleCount, totalParagraphs]);
 
   const handleReplay = useCallback(() => {
     // Let parent handle replay by changing replayKey
@@ -348,38 +315,23 @@ export default function GreetingCard({ config, replayKey }) {
                       scrollBehavior: 'auto',
                     }}
                   >
-                    {segments.map((seg, i) => {
-                      const revealedInSeg = Math.max(0, Math.min(revealCount - seg.start, seg.chars.length));
-                      const visibleText = seg.chars.slice(0, revealedInSeg).join('');
-                      const allRevealed = revealedInSeg >= seg.chars.length;
+                    {paragraphs.map((para, i) => {
+                      const isVisible = i < visibleCount;
                       return (
                         <p
                           key={i}
+                          className={isVisible ? 'letter-fade-in' : ''}
                           style={{
                             margin: '0 0 14px',
-                            opacity: revealedInSeg > 0 ? 1 : 0,
-                            transition: 'opacity 0.3s',
-                            minHeight: revealedInSeg > 0 ? undefined : '1.8em',
+                            opacity: isVisible ? undefined : 0,
+                            minHeight: '1.8em',
                           }}
                         >
-                          {visibleText}
-                          {!allRevealed && revealCount > seg.start && (
-                            <span
-                              style={{
-                                display: 'inline-block',
-                                width: 2,
-                                height: '1em',
-                                marginLeft: 1,
-                                background: '#c9707c',
-                                verticalAlign: 'text-bottom',
-                                animation: 'caret-blink 0.8s steps(2) infinite',
-                              }}
-                            />
-                          )}
+                          {para}
                         </p>
                       );
                     })}
-                    {revealCount >= totalChars && totalChars > 0 && (
+                    {visibleCount >= totalParagraphs && totalParagraphs > 0 && (
                       <div style={{ textAlign: 'right', marginTop: 8, fontStyle: 'italic', color: '#c9707c' }}>
                         — {config.senderName}
                       </div>

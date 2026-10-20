@@ -44,3 +44,20 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
 }
+
+@keyframes letter-fade-in {
+  0% {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+.letter-fade-in {
+  animation: letter-fade-in 0.6s ease-out forwards;
+}
