@@ -16,7 +16,7 @@ const ease = [0.45, 0, 0.55, 1];
 
 // Speed for typewriter reveal: ms per character
 const CHAR_MS = 55;
-const PARAGRAPH_PAUSE = 600;
+const PARAGRAPH_PAUSE = 450;
 
 // Split text into paragraphs, each with its characters
 function buildSegments(text) {
@@ -83,84 +83,54 @@ export default function GreetingCard({ config, replayKey }) {
       return;
     }
 
-    // Wait a moment for the letter container to appear, then start revealing
-    const startDelay = 1600;
-    const startTime = performance.now() + startDelay;
-    let rafId = null;
+    let count = 0;
+    let intervalId = null;
 
-    const step = (now) => {
-      if (userScrolled.current) {
-        // User took over — stop auto reveal/scroll but keep what's revealed
-        setRevealDone(true);
-        return;
-      }
-      const elapsed = now - startTime;
-      if (elapsed < 0) {
-        rafId = requestAnimationFrame(step);
-        return;
-      }
-
-      // Calculate how many characters to reveal based on elapsed time + paragraph pauses
-      let count = 0;
-      let timeUsed = 0;
-      for (let i = 0; i < segmentsRef.current.length; i++) {
-        const seg = segmentsRef.current[i];
-        const segCharTime = seg.chars.length * CHAR_MS;
-        if (timeUsed + segCharTime <= elapsed) {
-          count = seg.start + seg.chars.length;
-          timeUsed += segCharTime;
-          if (i < segmentsRef.current.length - 1) {
-            if (timeUsed + PARAGRAPH_PAUSE <= elapsed) {
-              timeUsed += PARAGRAPH_PAUSE;
-            } else {
-              // We're in the pause between this paragraph and the next
-              break;
-            }
-          }
-        } else {
-          const charsIntoSeg = Math.floor((elapsed - timeUsed) / CHAR_MS);
-          count = seg.start + Math.min(charsIntoSeg, seg.chars.length);
-          break;
+    const startReveal = () => {
+      intervalId = setInterval(() => {
+        if (userScrolled.current) {
+          clearInterval(intervalId);
+          setRevealDone(true);
+          return;
         }
-      }
 
-      setRevealCount(count);
-
-      // Follow-scroll: keep the bottom of revealed text in view
-      const el = scrollRef.current;
-      if (el) {
-        const maxScroll = el.scrollHeight - el.clientHeight;
-        // Find the paragraph element that contains the current reveal position
-        const paras = el.querySelectorAll('[data-para]');
-        for (let p = paras.length - 1; p >= 0; p--) {
-          const paraEl = paras[p];
-          const paraStart = Number(paraEl.dataset.paraStart);
-          const paraLen = Number(paraEl.dataset.paraLen);
-          if (count >= paraStart) {
-            // Scroll so this paragraph's revealed portion is visible
-            const charsShown = Math.min(count - paraStart, paraLen);
-            const fullHeight = paraEl.scrollHeight;
-            const ratio = paraLen > 0 ? charsShown / paraLen : 1;
-            const visibleHeight = fullHeight * ratio;
-            const targetTop = paraEl.offsetTop + visibleHeight - el.clientHeight * 0.65;
-            const targetScroll = Math.max(0, Math.min(maxScroll, targetTop));
-            el.scrollTop = targetScroll;
+        // Find which segment we're in and advance one character
+        const segs = segmentsRef.current;
+        let advanced = false;
+        for (let i = 0; i < segs.length; i++) {
+          const seg = segs[i];
+          if (count < seg.start + seg.chars.length) {
+            count++;
+            advanced = true;
             break;
           }
         }
-      }
 
-      if (count >= totalChars) {
-        setRevealDone(true);
-        return;
-      }
-      rafId = requestAnimationFrame(step);
+        if (!advanced || count >= totalChars) {
+          count = totalChars;
+          setRevealCount(count);
+          clearInterval(intervalId);
+          setRevealDone(true);
+          return;
+        }
+
+        setRevealCount(count);
+
+        // Follow-scroll: keep bottom of revealed text in view
+        const el = scrollRef.current;
+        if (el) {
+          const maxScroll = el.scrollHeight - el.clientHeight;
+          el.scrollTop = Math.min(maxScroll, el.scrollHeight);
+        }
+      }, CHAR_MS);
     };
 
-    rafId = requestAnimationFrame(step);
+    // Wait for letter container to appear, then start
+    const startTimer = setTimeout(startReveal, 1600);
 
     return () => {
-      if (rafId) cancelAnimationFrame(rafId);
+      clearTimeout(startTimer);
+      if (intervalId) clearInterval(intervalId);
     };
   }, [phase, replayKey]);
 
@@ -387,7 +357,7 @@ export default function GreetingCard({ config, replayKey }) {
                       fontSize: 15,
                       lineHeight: 1.8,
                       padding: '0 4px',
-                      scrollBehavior: 'smooth',
+                      scrollBehavior: 'auto',
                     }}
                   >
                     {segments.map((seg, i) => {
@@ -397,17 +367,15 @@ export default function GreetingCard({ config, replayKey }) {
                       return (
                         <p
                           key={i}
-                          data-para={i}
-                          data-para-start={seg.start}
-                          data-para-len={seg.chars.length}
                           style={{
                             margin: '0 0 14px',
                             opacity: revealedInSeg > 0 ? 1 : 0,
                             transition: 'opacity 0.3s',
+                            minHeight: revealedInSeg > 0 ? undefined : '1.8em',
                           }}
                         >
                           {visibleText}
-                          {!allRevealed && (
+                          {!allRevealed && revealCount > seg.start && (
                             <span
                               style={{
                                 display: 'inline-block',
