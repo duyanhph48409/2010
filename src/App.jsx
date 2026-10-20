@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import GreetingCard from './GreetingCard.jsx';
-import EditMode from './EditMode.jsx';
 import { getConfig, isEditMode, DEFAULT_CONFIG } from './config.js';
+
+const EditMode = lazy(() => import('./EditMode.jsx'));
 
 export default function App() {
   const [config, setConfig] = useState(() => getConfig());
@@ -189,14 +190,16 @@ export default function App() {
           <audio ref={audioRef} src={config.backgroundMusicUrl} loop preload="auto" />
         )}
 
-        {/* Edit mode overlay */}
+        {/* Edit mode overlay (lazy-loaded, only when needed) */}
         <AnimatePresence>
           {editMode && (
-            <EditMode
-              config={config}
-              onSave={handleSaveConfig}
-              onPreview={handlePreview}
-            />
+            <Suspense fallback={null}>
+              <EditMode
+                config={config}
+                onSave={handleSaveConfig}
+                onPreview={handlePreview}
+              />
+            </Suspense>
           )}
         </AnimatePresence>
       </div>
